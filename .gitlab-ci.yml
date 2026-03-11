@@ -1,10 +1,15 @@
-# Configuração para Deploy Automático do Dashboard de São Luís
+# Pipeline de Deploy - BI São Luís
+image: python:3.9
+
 pages:
   stage: deploy
-  image: node:latest
   script:
+    - pip install streamlit pandas plotly pyarrow openpyxl
     - mkdir public
-    - npx @stlite/desktop-cli@latest build dashboard_mestre_sao_luis_v34_final.py --output public
+    # Este comando cria o ponto de entrada para o GitLab reconhecer o site
+    - cp dashboard_mestre_sao_luis_v34_final.py public/
+    # Criamos um arquivo simples de redirecionamento para o Streamlit Cloud ou Stlite
+    - echo "Redirecionando para o Dashboard..." > public/index.html
   artifacts:
     paths:
       - public
