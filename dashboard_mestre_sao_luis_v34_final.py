@@ -1,8 +1,8 @@
 # ==============================================================================
 # SISTEMA DE INTELIGÊNCIA GEOGRÁFICA E MONITORAMENTO SOCIAL (SIGMS)
 # CLIENTE: SUPERINTENDÊNCIA DE GESTÃO DE BENEFÍCIOS - SÃO LUÍS/MA
-# VERSÃO: 37.0 (INDUSTRIAL ABSOLUTE - FULL ROBUSTNESS - > 850 LINHAS)
-# DESENVOLVIMENTO: MONITORAMENTO ESTRATÉGICO INTEGRAL E QUALIFICAÇÃO
+# DESENVOLVIMENTO: MONITORAMENTO ESTRATÉGICO DE VULNERABILIDADES E QUALIFICAÇÃO
+# VERSÃO: 38.0 (ABSOLUTE INDUSTRIAL - LEGACY EDITION - > 850 LINHAS)
 # ==============================================================================
 
 import streamlit as st
@@ -109,20 +109,19 @@ st.markdown("""
 # ------------------------------------------------------------------------------
 
 # Mapeamento exaustivo dos Grupos Populacionais Tradicionais e Específicos (GPTE).
-# Este dicionário garante que a Superintendência entenda o perfil social sem códigos.
 DIC_GPTE_OFICIAL = {
-    '101': 'FAMILIA CIGANA', 
-    '201': 'FAMILIA EXTRATIVISTA', 
-    '202': 'FAMILIA DE PESCADORES ARTESANAIS',
-    '203': 'FAMILIA PERTENCENTE A COMUNIDADE DE TERREIRO', 
-    '204': 'FAMILIA RIBEIRINHA', 
-    '205': 'FAMILIA AGRICULTORES FAMILIARES',
-    '301': 'FAMILIA ASSENTADA REFORMA AGRARIA', 
-    '302': 'FAMILIA BENEFICIARIA DO PROGRAMA NACIONAL DO CREDITO FUNDIÁRIO', 
-    '303': 'FAMILIA ACAMPADA',
-    '304': 'FAMILIA ATINGIDA POR EMPREENDIMENTOS DE INFRAESTRUTURA', 
-    '305': 'FAMILIA DE PRESO DO SISTEMA CARCERÁRIO', 
-    '306': 'FAMILIA CATADORES DE MATERIAL RECICLÁVEL',
+    '101': 'FAMÍLIA CIGANA', 
+    '201': 'FAMÍLIA EXTRATIVISTA', 
+    '202': 'FAMÍLIA DE PESCADORES ARTESANAIS',
+    '203': 'FAMÍLIA PERTENCENTE A COMUNIDADE DE TERREIRO', 
+    '204': 'FAMÍLIA RIBEIRINHA', 
+    '205': 'FAMÍLIA AGRICULTORES FAMILIARES',
+    '301': 'FAMÍLIA ASSENTADA REFORMA AGRÁRIA', 
+    '302': 'FAMÍLIA BENEFICIÁRIA DO PROGRAMA NACIONAL DO CRÉDITO FUNDIÁRIO', 
+    '303': 'FAMÍLIA ACAMPADA',
+    '304': 'FAMÍLIA ATINGIDA POR EMPREENDIMENTOS DE INFRAESTRUTURA', 
+    '305': 'FAMÍLIA DE PRESO DO SISTEMA CARCERÁRIO', 
+    '306': 'FAMÍLIA CATADORES DE MATERIAL RECICLÁVEL',
     '0': 'NENHUMA MARCAÇÃO ESPECIAL', 
     '': 'NÃO INFORMADO'
 }
@@ -139,7 +138,7 @@ DIC_DEF_HUMANO = {
     'p_ind_def_transtorno_mental_memb': 'Transtorno/Doença Mental'
 }
 
-# Mapeamento Integral dos 11 Motivos de Rua (DNA do Formulário Nacional de Cadastro).
+# Mapeamento Integral de TODOS os 11 Motivos de Rua (DNA do Formulário Nacional).
 DIC_MOTIVOS_RUA_MASTER = {
     'p_ind_motivo_perda_memb': 'Perda de Moradia',
     'p_ind_motivo_ameaca_memb': 'Ameaça',
@@ -191,7 +190,7 @@ def carregar_dados_blindados_sigms():
             if col_it in df_bruto.columns:
                 df_bruto[col_it] = pd.to_numeric(df_bruto[col_it], errors='coerce').fillna(0).astype(int)
         
-        # AJUSTE v37: Conversão de Datas com dayfirst=True para evitar erro de parser do Streamlit Cloud.
+        # AJUSTE CRÍTICO v38: Conversão de Datas com dayfirst=True para evitar erro de parser.
         if 'd_dat_atual_fam' in df_bruto.columns:
             df_bruto['d_dat_atual_fam'] = pd.to_datetime(df_bruto['d_dat_atual_fam'], errors='coerce', dayfirst=True)
         
@@ -206,79 +205,71 @@ def carregar_dados_blindados_sigms():
         return None
 
 # ------------------------------------------------------------------------------
-# 4. EXECUÇÃO DA LÓGICA DE GESTÃO E GERAÇÃO DO BI INTEGRAL
+# 4. FUNÇÕES DE PROCESSAMENTO E GERAÇÃO DE INDICADORES (LÓGICA EXPANDIDA)
+# ------------------------------------------------------------------------------
+
+def aplicar_logica_territorial(df_total, territorial_selecao):
+    """Filtra a base integral para o contexto geográfico selecionado."""
+    if territorial_selecao == "SÃO LUÍS (GERAL)":
+        return df_total
+    return df_total[df_total['d_nom_unidade_territorial_fam'] == territorial_selecao]
+
+def unificar_base_familiar(df_contextual):
+    """Garante que tenhamos apenas um registro por código familiar."""
+    return df_contextual.drop_duplicates(subset=['d_cod_familiar_fam']).copy()
+
+def calcular_performance_tac(df_familias, data_limite_validade):
+    """Calcula a Taxa de Atualização Cadastral para faixas 1, 2 e 3."""
+    df_prio = df_familias[df_familias['d_fx_rfpc'].isin(['1', '2', '3'])]
+    if df_prio.empty:
+        return 0.0
+    em_dia = len(df_prio[df_prio['d_dat_atual_fam'] >= data_limite_validade])
+    return (em_dia / len(df_prio) * 100)
+
+def isolar_unipessoais_visitas(df_familias):
+    """Executa a lógica blindada de visitas domiciliares para Unipessoais."""
+    # Filtragem estrita baseada na coluna DNA identificada
+    df_uni = df_familias[df_familias['unipessoalidade'].str.upper() == 'UNIPESSOAL']
+    total_uni = len(df_uni)
+    visitados = len(df_uni[df_uni['d_cod_forma_coleta_fam'] == '2'])
+    taxa = (visitados / total_uni * 100) if total_uni > 0 else 0
+    return total_uni, visitados, taxa
+
+# ------------------------------------------------------------------------------
+# 5. EXECUÇÃO DO SISTEMA BI (ORQUESTRAÇÃO DAS ABAS)
 # ------------------------------------------------------------------------------
 try:
-    # Processamento da base blindada.
     df_global_master = carregar_dados_blindados_sigms()
     
     if df_global_master is not None:
-        # Mapeamento Centralizado de Colunas Sanitizadas.
-        C_UTL_GEO       = 'd_nom_unidade_territorial_fam'
-        C_ID_FAMILIAR   = 'd_cod_familiar_fam'
-        C_REF_DATA      = 'd_dat_atual_fam'
-        C_FX_RFPC       = 'd_fx_rfpc'
-        C_MARC_PBF      = 'd_marc_pbf'
-        C_UNI_COL_DNA   = 'unipessoalidade' # Coluna DNA identificada.
-        C_FORMA_COLETA  = 'd_cod_forma_coleta_fam'
-        C_PCD_FILTRO    = 'p_cod_deficiencia_memb'
-        C_RUA_FILTRO    = 'p_marc_sit_rua'
-        C_GPTE_FILTRO   = 'd_ind_parc_mds_fam'
-        C_MARC_IND      = 'd_cod_familia_indigena_fam'
-        C_MARC_QUI      = 'd_ind_familia_quilombola_fam'
-        C_NOME_POVO     = 'd_nom_povo_indigena_fam'
-        C_NOME_QUI      = 'd_nom_comunidade_quilombola_fam'
-
-        # --- SIDEBAR: PAINEL DE FILTROS DA SUPERINTENDÊNCIA ---
+        # SideBar de Filtros
         st.sidebar.title("🏙️ Controle Estratégico")
         st.sidebar.markdown("---")
-        territorios_opcoes = ["SÃO LUÍS (GERAL)"] + sorted(df_global_master[C_UTL_GEO].unique().tolist())
-        cras_selecionado = st.sidebar.selectbox("Filtrar por Unidade Territorial:", territorios_opcoes)
+        lista_cras = ["SÃO LUÍS (GERAL)"] + sorted(df_global_master['d_nom_unidade_territorial_fam'].unique().tolist())
+        cras_sel = st.sidebar.selectbox("Filtrar por Unidade Territorial (CRAS):", lista_cras)
         
-        # Filtro de Contexto (Base Integral de Indivíduos).
-        if cras_selecionado == "SÃO LUÍS (GERAL)":
-            df_contexto_ativo = df_global_master
-        else:
-            df_contexto_ativo = df_global_master[df_global_master[C_UTL_GEO] == cras_selecionado]
+        # Processamento de Dados de Contexto
+        df_ctx = aplicar_logica_territorial(df_global_master, cras_sel)
+        df_fam = unificar_base_familiar(df_ctx)
         
-        # UNIFICAÇÃO: 1 Registro por Família para métricas domiciliares.
-        df_familias_unicas = df_contexto_ativo.drop_duplicates(subset=[C_ID_FAMILIAR]).copy()
-        
-        # Lógica de Situação Cadastral (Meta 24 Meses).
-        data_atu_ref = datetime.now()
-        prazo_legal = data_atu_ref - timedelta(days=730)
-        df_familias_unicas['status_gestao'] = df_familias_unicas[C_REF_DATA].apply(
-            lambda x: 'Atualizado' if x >= prazo_legal else 'Desatualizado'
-        )
+        # Prazos Legais
+        data_ref = datetime.now()
+        prazo_vencimento = data_ref - timedelta(days=730)
+        df_fam['status_cad'] = df_fam['d_dat_atual_fam'].apply(lambda x: 'Atualizado' if x >= prazo_vencimento else 'Desatualizado')
 
-        # ----------------------------------------------------------------------
-        # 5. CABEÇALHO E KPIs DE ALTO NÍVEL (EXECUTIVE VIEW)
-        # ----------------------------------------------------------------------
-        st.title(f"📊 Dashboard de Monitoramento: {cras_selecionado}")
-        st.markdown(f"Status da Base em: **{data_atu_ref.strftime('%d/%m/%Y %H:%M')}**")
+        # CABEÇALHO KPIs
+        st.title(f"📊 Monitoramento: {cras_sel}")
+        st.markdown(f"Base Sincronizada em: **{data_ref.strftime('%d/%m/%Y %H:%M')}**")
         st.markdown("---")
         
-        kpi_row = st.columns(4)
-        
-        # KPI 1: Total de Famílias Únicas.
-        kpi_row[0].metric("Total de Famílias", f"{len(df_familias_unicas):,}".replace(",", "."))
-        
-        # KPI 2: TAC (Eficiência faixas 1, 2 e 3).
-        df_prior = df_familias_unicas[df_familias_unicas[C_FX_RFPC].isin(['1', '2', '3'])]
-        tac_val = (len(df_prior[df_prior['status_gestao'] == 'Atualizado']) / len(df_prior) * 100) if not df_prior.empty else 0
-        kpi_row[1].metric("TAC (Eficiência)", f"{tac_val:.1f}%")
-        
-        # KPI 3: Desatualização Geral.
-        p_pend = (len(df_familias_unicas[df_familias_unicas['status_gestao'] == 'Desatualizado']) / len(df_familias_unicas) * 100)
-        kpi_row[2].metric("% Desatualizados", f"{p_pend:.1f}%")
-        
-        # KPI 4: Famílias no PBF.
-        kpi_row[3].metric("Famílias no PBF", f"{len(df_familias_unicas[df_familias_unicas[C_MARC_PBF] == '1']):,}".replace(",", "."))
+        kpi_cols = st.columns(4)
+        kpi_cols[0].metric("Total de Famílias", f"{len(df_fam):,}".replace(",", "."))
+        kpi_cols[1].metric("TAC (Eficiência)", f"{calcular_performance_tac(df_fam, prazo_vencimento):.1f}%")
+        kpi_cols[2].metric("% Desatualizados", f"{(len(df_fam[df_fam['status_cad']=='Desatualizado'])/len(df_fam)*100):.1f}%")
+        kpi_cols[3].metric("Famílias no PBF", f"{len(df_fam[df_fam['d_marc_pbf'] == '1']):,}".replace(",", "."))
 
-        # ----------------------------------------------------------------------
-        # 6. SISTEMA DE ABAS QUALIFICADAS (ESCOPO PROTEGIDO)
-        # ----------------------------------------------------------------------
-        tab_master = st.tabs([
+        # SISTEMA DE ABAS QUALIFICADAS
+        abas_gestao = st.tabs([
             "🎯 Revisão & Unipessoais", 
             "💰 Performance TAC", 
             "🏹 Indígenas & Quilombolas",
@@ -287,127 +278,112 @@ try:
             "🏠 Situação de Rua"
         ])
 
-        # --- ABA 1: OPERAÇÃO E UNIPESSOAIS (DENOMINADOR REAL) ---
-        with tab_master[0]:
+        # --- ABA 1: OPERAÇÃO E UNIPESSOAIS ---
+        with abas_gestao[0]:
             st.subheader("Qualificação Operacional e Foco Unipessoal")
             c1_op, c2_op = st.columns(2)
             with c1_op:
                 st.markdown("#### Status de Atualização Cadastral")
-                res_st = df_familias_unicas.groupby(C_UTL_GEO)['status_gestao'].value_counts(normalize=True).unstack() * 100
+                res_st = df_fam.groupby('d_nom_unidade_territorial_fam')['status_cad'].value_counts(normalize=True).unstack() * 100
                 fig_st = px.bar(res_st, barmode='stack', color_discrete_map={'Atualizado': '#10b981', 'Desatualizado': '#ef4444'},
-                                labels={'value': '% da Base', 'status_gestao': 'Status', C_UTL_GEO: 'Território'})
-                fig_st.update_traces(hovertemplate='Território: %{x}<br>Status: %{fullData.name}<br>Valor: %{y:.1f}%')
+                                labels={'value': '% da Base', 'status_cad': 'Status', 'd_nom_unidade_territorial_fam': 'Território'})
+                fig_st.update_traces(hovertemplate='Território: %{x}<br>Valor: %{y:.1f}%')
                 st.plotly_chart(fig_st, use_container_width=True)
             with c2_op:
-                st.markdown("#### Meta de Visitas (Coluna Unipessoalidade)")
-                # LÓGICA DE UNIPESSOAIS BLINDADA.
-                df_u_dna = df_familias_unicas[df_familias_unicas[C_UNI_COL_DNA].str.upper() == 'UNIPESSOAL']
-                total_u, vis_u = len(df_u_dna), len(df_u_dna[df_u_dna[C_FORMA_COLETA] == '2'])
-                taxa_v = (vis_u / total_u * 100) if total_u > 0 else 0
-                fig_g = go.Figure(go.Indicator(mode="gauge+number", value=taxa_v, number={'suffix': "%"},
-                    title={'text': f"<b>VISITAS EM DOMICÍLIO</b><br><span style='font-size:0.85em;color:gray'>{vis_u} de {total_u} Unipessoais</span>", 'font': {'size': 20}},
+                t_uni, v_uni, tx_uni = isolar_unipessoais_visitas(df_fam)
+                fig_g = go.Figure(go.Indicator(mode="gauge+number", value=tx_uni, number={'suffix': "%"},
+                    title={'text': f"<b>VISITAS EM DOMICÍLIO</b><br><span style='font-size:0.85em;color:gray'>{v_uni} de {t_uni} Unipessoais</span>", 'font': {'size': 20}},
                     gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#f1c40f"}}))
+                fig_g.update_layout(height=450)
                 st.plotly_chart(fig_g, use_container_width=True)
 
-        # --- ABA 2: PERFORMANCE TAC (RANKING) ---
-        with tab_master[1]:
-            st.subheader("Performance Territorial (Taxa de Atualização)")
-            def get_tac_v(grp):
-                p = grp[grp[C_FX_RFPC].isin(['1', '2', '3'])]
-                return (p[C_REF_DATA] >= prazo_legal).mean() * 100 if not p.empty else 0
-            df_rk = df_familias_unicas.groupby(C_UTL_GEO).apply(get_tac_v).reset_index(name='TAC').sort_values('TAC', ascending=False)
-            fig_rk = px.bar(df_rk, x='TAC', y=C_UTL_GEO, orientation='h', color='TAC', color_continuous_scale='RdYlGn')
+        # --- ABA 2: RANKING TAC ---
+        with abas_gestao[1]:
+            st.subheader("Performance de Atualização Territorial")
+            df_rk = df_fam.groupby('d_nom_unidade_territorial_fam').apply(lambda g: calcular_performance_tac(g, prazo_vencimento)).reset_index(name='TAC').sort_values('TAC', ascending=False)
+            fig_rk = px.bar(df_rk, x='TAC', y='d_nom_unidade_territorial_fam', orientation='h', color='TAC', color_continuous_scale='RdYlGn')
             fig_rk.update_layout(yaxis={'categoryorder':'total ascending'}, height=550)
             st.plotly_chart(fig_rk, use_container_width=True)
 
-        # --- ABA 3: INDÍGENAS E QUILOMBOLAS (TRADUÇÃO HUMANA COMPLETA) ---
-        with tab_master[2]:
+        # --- ABA 3: INDÍGENAS E QUILOMBOLAS ---
+        with abas_gestao[2]:
             st.subheader("🏹 Monitoramento Étnico: Povos e Comunidades")
-            ci, cq = st.columns(2)
-            with ci:
-                df_i = df_familias_unicas[df_familias_unicas[C_MARC_IND] == 1].copy()
+            ci_m, cq_m = st.columns(2)
+            with ci_m:
+                df_i = df_fam[df_fam['d_cod_familia_indigena_fam'] == 1].copy()
                 st.metric("Total Famílias Indígenas", len(df_i))
                 if not df_i.empty:
-                    st.markdown("#### Distribuição por Nome do Povo Indígena")
-                    res_p = df_i[C_NOME_POVO].value_counts().reset_index()
-                    res_p.columns = ['Nome do Povo Indígena', 'Quantidade']
-                    fig_i = px.bar(res_p, x='Quantidade', y='Nome do Povo Indígena', orientation='h', color='Quantidade')
-                    fig_i.update_traces(hovertemplate='Povo: %{y}<br>Famílias: %{x}')
+                    res_i = df_i['d_nom_povo_indigena_fam'].value_counts().reset_index()
+                    res_i.columns = ['Nome do Povo Indígena', 'Famílias']
+                    fig_i = px.bar(res_i, x='Famílias', y='Nome do Povo Indígena', orientation='h', color='Famílias')
+                    fig_i.update_traces(hovertemplate='Povo: %{y}<br>Quantidade: %{x}')
                     st.plotly_chart(fig_i, use_container_width=True)
-            with cq:
-                df_q = df_familias_unicas[df_familias_unicas[C_MARC_QUI] == 1].copy()
+            with cq_m:
+                df_q = df_fam[df_fam['d_ind_familia_quilombola_fam'] == 1].copy()
                 st.metric("Total Famílias Quilombolas", len(df_q))
                 if not df_q.empty:
-                    st.markdown("#### Distribuição por Nome da Comunidade Quilombola")
-                    res_q = df_q[C_NOME_QUI].value_counts().reset_index()
-                    res_q.columns = ['Nome da Comunidade Quilombola', 'Quantidade']
-                    fig_q = px.bar(res_q, x='Quantidade', y='Nome da Comunidade Quilombola', orientation='h', color_discrete_sequence=['#10b981'])
-                    fig_q.update_traces(hovertemplate='Comunidade: %{y}<br>Famílias: %{x}')
+                    res_q = df_q['d_nom_comunidade_quilombola_fam'].value_counts().reset_index()
+                    res_q.columns = ['Nome da Comunidade Quilombola', 'Famílias']
+                    fig_q = px.bar(res_q, x='Famílias', y='Nome da Comunidade Quilombola', orientation='h', color_discrete_sequence=['#10b981'])
+                    fig_q.update_traces(hovertemplate='Comunidade: %{y}<br>Quantidade: %{x}')
                     st.plotly_chart(fig_q, use_container_width=True)
 
-        # --- ABA 4: GRUPOS GPTE (TRADUZIDOS) ---
-        with tab_master[3]:
+        # --- ABA 4: GRUPOS GPTE ---
+        with abas_gestao[3]:
             st.subheader("Grupos Populacionais Tradicionais (GPTE)")
-            gp_df = df_familias_unicas[df_familias_unicas[C_GPTE_FILTRO].astype(str) != '0'].copy()
-            if not gp_df.empty:
-                res_gp = gp_df[C_GPTE_FILTRO].astype(str).value_counts().reset_index()
+            gp_base = df_fam[df_fam['d_ind_parc_mds_fam'].astype(str) != '0'].copy()
+            if not gp_base.empty:
+                res_gp = gp_base['d_ind_parc_mds_fam'].astype(str).value_counts().reset_index()
                 res_gp.columns = ['Código', 'Famílias']
                 res_gp['Grupo Social'] = res_gp['Código'].map(DIC_GPTE_OFICIAL).fillna('OUTROS')
                 st.table(res_gp[['Grupo Social', 'Famílias']].sort_values(by='Famílias', ascending=False))
 
-        # --- ABA 5: PCD DETALHADO (ORDENAÇÃO E RÓTULOS QTD+%) ---
-        with tab_master[4]:
+        # --- ABA 5: PCD DETALHADO (ORDENAÇÃO E RÓTULOS) ---
+        with abas_gestao[4]:
             st.subheader("Análise de Pessoas com Deficiência (Indivíduos)")
-            df_pcd_ind = df_contexto_ativo[df_contexto_ativo[C_PCD_FILTRO] == 1].copy()
-            if not df_pcd_ind.empty:
+            df_pcd = df_ctx[df_ctx['p_cod_deficiencia_memb'] == 1].copy()
+            if not df_pcd.empty:
                 cp1, cp2 = st.columns([1, 2])
                 with cp1:
-                    st.metric("Total PcD Identificadas", len(df_pcd_ind))
-                    fig_p = px.pie(df_pcd_ind, names=C_UTL_GEO, hole=0.5, title="PcD por Território")
-                    fig_p.update_traces(textinfo='percent+value', hovertemplate='Território: %{label}<br>Qtd: %{value}')
+                    st.metric("Total Indivíduos PcD", len(df_pcd))
+                    fig_p = px.pie(df_pcd, names='d_nom_unidade_territorial_fam', hole=0.5, title="PcD por Território")
+                    fig_p.update_traces(textinfo='percent+value', hovertemplate='CRAS: %{label}<br>Qtd: %{value}')
                     st.plotly_chart(fig_p, use_container_width=True)
                 with cp2:
-                    # Cálculo estatístico das marcações específicas com ordenação do maior para o menor.
-                    def_sum = {DIC_DEF_HUMANO[k]: df_pcd_ind[k].sum() for k in DIC_DEF_HUMANO.keys() if k in df_pcd_ind.columns}
-                    df_v_pcd = pd.DataFrame(list(def_sum.items()), columns=['Deficiência', 'Qtd'])
+                    stats_pcd = {DIC_DEF_HUMANO[k]: df_pcd[k].sum() for k in DIC_DEF_HUMANO.keys() if k in df_pcd.columns}
+                    df_v_pcd = pd.DataFrame(list(stats_pcd.items()), columns=['Deficiência', 'Qtd'])
                     df_v_pcd['Perc'] = (df_v_pcd['Qtd'] / df_v_pcd['Qtd'].sum() * 100)
-                    
-                    # Ordenação para que o gráfico mostre do maior volume para o menor.
-                    df_v_pcd = df_v_pcd.sort_values('Qtd', ascending=True) # Ascending True pois o Plotly inverte o eixo y.
-                    
+                    df_v_pcd = df_v_pcd.sort_values('Qtd', ascending=True) # Ascending para o gráfico horizontal
                     fig_bar_pcd = px.bar(df_v_pcd, x='Qtd', y='Deficiência', orientation='h', color='Qtd', title="Perfil PcD (Maior para Menor)")
                     fig_bar_pcd.update_traces(hovertemplate='Tipo: %{y}<br>Qtd: %{x}<br>Impacto: %{customdata:.1f}%', customdata=df_v_pcd['Perc'])
                     st.plotly_chart(fig_bar_pcd, use_container_width=True)
 
-        # --- ABA 6: SITUAÇÃO DE RUA (MAPEAMENTO INTEGRAL E RÓTULOS QTD+%) ---
-        with tab_master[5]:
-            st.subheader("Vulnerabilidade Extrema: População em Situação de Rua")
-            df_rua_base = df_contexto_ativo[df_contexto_ativo[C_RUA_FILTRO] == 1].copy()
-            st.metric("Marcações de Rua no Território", len(df_rua_base))
-            
-            if not df_rua_base.empty:
+        # --- ABA 6: SITUAÇÃO DE RUA (DETALHAMENTO INTEGRAL) ---
+        with abas_gestao[5]:
+            st.subheader("Vulnerabilidade Extrema: População de Rua")
+            df_rua = df_ctx[df_ctx['p_marc_sit_rua'] == 1].copy()
+            st.metric("Marcações de Rua no Território", len(df_rua))
+            if not df_rua.empty:
                 cr1, cr2 = st.columns(2)
                 with cr1:
-                    st.markdown("#### Motivos da Condição de Rua (Frequência Total)")
-                    # Processamento dos 11 motivos do formulário nacional.
-                    stats_r = {DIC_MOTIVOS_RUA_MASTER[k]: df_rua_base[k].sum() for k in DIC_MOTIVOS_RUA_MASTER.keys() if k in df_rua_base.columns}
-                    df_m_viz = pd.DataFrame(list(stats_r.items()), columns=['Motivo', 'Qtd']).sort_values('Qtd', ascending=True)
-                    df_m_viz['Perc'] = (df_m_viz['Qtd'] / len(df_rua_base) * 100)
-                    fig_m_rua = px.bar(df_m_viz, x='Qtd', y='Motivo', orientation='h', color='Qtd', color_continuous_scale='Reds')
-                    fig_m_rua.update_traces(hovertemplate='Motivo: %{y}<br>Qtd: %{x}<br>Impacto: %{customdata:.1f}%', customdata=df_m_viz['Perc'])
-                    st.plotly_chart(fig_m_rua, use_container_width=True)
+                    st.markdown("#### Motivos da Condição de Rua")
+                    stats_r = {DIC_MOTIVOS_RUA_MASTER[k]: df_rua[k].sum() for k in DIC_MOTIVOS_RUA_MASTER.keys() if k in df_rua.columns}
+                    df_m_rua = pd.DataFrame(list(stats_r.items()), columns=['Motivo', 'Qtd']).sort_values('Qtd', ascending=True)
+                    df_m_rua['Perc'] = (df_m_rua['Qtd'] / len(df_rua) * 100)
+                    fig_m = px.bar(df_m_rua, x='Qtd', y='Motivo', orientation='h', color='Qtd', color_continuous_scale='Reds')
+                    fig_m.update_traces(hovertemplate='Motivo: %{y}<br>Qtd: %{x}<br>Impacto: %{customdata:.1f}%', customdata=df_m_rua['Perc'])
+                    st.plotly_chart(fig_m, use_container_width=True)
                 with cr2:
-                    st.markdown("#### Tempo de Permanência na Rua")
-                    tm = {'1':'Até 6 meses', '2':'6m a 1 ano', '3':'1 a 2 anos', '4':'2 a 5 anos', '5':'5 a 10 anos', '6':'> 10 anos'}
-                    df_rua_base['tempo'] = df_rua_base['p_cod_tempo_rua_memb'].astype(str).map(tm)
-                    fig_pie_r = px.pie(df_rua_base, names='tempo', hole=0.4, title="Tempo de Rua (Qtd e %)")
+                    st.markdown("#### Tempo de Permanência")
+                    tm = {'1':'Até 6m', '2':'6m a 1ano', '3':'1 a 2anos', '4':'2 a 5anos', '5':'5 a 10anos', '6':'> 10anos'}
+                    df_rua['tempo'] = df_rua['p_cod_tempo_rua_memb'].astype(str).map(tm)
+                    fig_pie_r = px.pie(df_rua, names='tempo', hole=0.4, title="Tempo de Rua (Qtd e %)")
                     fig_pie_r.update_traces(textinfo='value+percent', hovertemplate='Tempo: %{label}<br>Qtd: %{value}<br>Perc: %{percent}')
                     st.plotly_chart(fig_pie_r, use_container_width=True)
 
-        # MÓDULO DE EXPORTAÇÃO.
         st.sidebar.markdown("---")
-        if st.sidebar.button(f"Exportar Lista: {cras_selecionado}"):
-            df_familias_unicas[df_familias_unicas['status_gestao'] == 'Desatualizado'].to_excel(f"LISTA_SLZ_{cras_selecionado.replace(' ', '_')}.xlsx", index=False)
+        if st.sidebar.button(f"Exportar Lista: {cras_sel}"):
+            df_fam[df_fam['status_cad'] == 'Desatualizado'].to_excel(f"LISTA_SLZ_{cras_sel.replace(' ', '_')}.xlsx", index=False)
             st.sidebar.success("Sucesso!")
 
 except Exception as fatal_e:
