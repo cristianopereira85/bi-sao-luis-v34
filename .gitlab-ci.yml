@@ -1,0 +1,12 @@
+# Configuração para Deploy Automático do Dashboard de São Luís
+pages:
+  stage: deploy
+  image: node:latest
+  script:
+    - mkdir public
+    - npx @stlite/desktop-cli@latest build dashboard_mestre_sao_luis_v34_final.py --output public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
